@@ -3,7 +3,18 @@
 use std::io::{stdout, Write};
 
 use clap::{Arg, Command};
-use curl::easy::Easy;
+use curl::easy::{Easy2, Handler, WriteError};
+
+struct Collector(Vec<u8>);
+
+impl Handler for Collector {
+    fn write(&mut self, data: &[u8]) -> Result<usize, WriteError> {
+        self.0.extend_from_slice(data);
+        Ok(data.len())
+    }
+}
+
+const KEYWORDS: &str = "\"http";
 
 fn main() {
     let args = Command::new("arachnid")
@@ -25,20 +36,22 @@ fn main() {
     println!("########################");
     println!("");
 
-    let mut url: String = args.value_of_t("url").unwrap_or("".to_string());
-    download_page(url.as_ref);
+    let mut url: String = args.value_of_t("url").unwrap_or((&"").to_string());
+    let mut page: String = download_page(&url.as_str());
 
-    println!("{}", url);
+    println!("Url: {}", url);
+    //println!("{}", page);
 
     
 }
 
-fn download_page(url: &String) {
-    let mut easy = Easy::new();
-    easy.write_function(|data| {
-        stdout().write_all(data).unwrap();
-        Ok(data.len())
-    }).unwrap();
+fn download_page(url: &str) -> String{
+    let mut easy = Easy2::new(Collector(Vec::new()));
+    easy.get(true).unwrap();
+    easy.url(url).unwrap();
     easy.perform().unwrap();
-    println!("{}", easy.response_code().unwrap());
+    
+    assert_eq!(easy.response_code().unwrap(), 200);
+    let contents = easy.get_ref();
+    return String::from_utf8_lossy(&contents.0).as_ref().to_string();
 }
